@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>StringsChecker — Detects Editor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;padding:30px}
+h1{font-size:22px;margin-bottom:6px;color:#58a6ff}
+.sub{color:#8b949e;font-size:13px;margin-bottom:24px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;margin-bottom:16px;position:relative}
+.card h3{font-size:15px;margin-bottom:14px;color:#e6edf3}
+.row{display:flex;gap:12px;margin-bottom:12px;align-items:center}
+label{color:#8b949e;font-size:13px;min-width:110px}
+input[type=text]{flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 12px;color:#e6edf3;font-size:14px;outline:none}
+input[type=text]:focus{border-color:#58a6ff}
+textarea{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-size:13px;font-family:'Cascadia Code','Consolas',monospace;resize:vertical;min-height:100px;outline:none}
+textarea:focus{border-color:#58a6ff}
+.toggle{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.toggle input{display:none}
+.toggle .sw{width:40px;height:22px;background:#30363d;border-radius:11px;position:relative;transition:.2s}
+.toggle .sw::after{content:'';position:absolute;width:18px;height:18px;background:#8b949e;border-radius:50%;top:2px;left:2px;transition:.2s}
+.toggle input:checked+.sw{background:#238636}
+.toggle input:checked+.sw::after{left:20px;background:#fff}
+.rm{position:absolute;top:12px;right:14px;background:none;border:none;color:#f85149;font-size:20px;cursor:pointer;opacity:.6}
+.rm:hover{opacity:1}
+.btn{padding:10px 22px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:.15s}
+.btn-blue{background:#238636;color:#fff}
+.btn-blue:hover{background:#2ea043}
+.btn-accent{background:#58a6ff;color:#0d1117}
+.btn-accent:hover{background:#79c0ff}
+.actions{display:flex;gap:12px;margin-bottom:24px}
+pre{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;font-size:12px;color:#8b949e;overflow-x:auto;max-height:300px;white-space:pre-wrap}
+.info{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:20px;font-size:13px;color:#8b949e;line-height:1.6}
+.info code{background:#161b22;padding:2px 6px;border-radius:4px;color:#e6edf3;font-size:12px}
+</style>
+</head>
+<body>
+<h1>StringsChecker — Detects Editor</h1>
+<p class="sub">Создание файла детектов для проверки строк в процессах. Строки хешируются FNV-1a (64-bit).</p>
+
+<div class="info">
+    Каждая строка хешируется — в файле только хеши, если пиздануть файлик, не будет видно настоящих строк.<br>
+    <code>detects.json</code> → положить рядом с <code>StringsChecker.exe</code> или загрузить через интерфейс.
+</div>
+
+<div id="detects"></div>
+<div class="actions">
+    <button class="btn btn-blue" onclick="addDetect()">Добавить детект</button>
+    <button class="btn btn-accent" onclick="download()">Скачать detects.json</button>
+</div>
+<h3 style="color:#8b949e;font-size:14px;margin-bottom:8px">Превью:</h3>
+<pre id="preview">Добавьте детект...</pre>
+
+<script>
+let detectId = 0;
+
+function fnv1a64(str) {
+    const enc = new TextEncoder();
+    const bytes = enc.encode(str);
+    let h = 0x14650FB0739D0383n;
+    const prime = 0x100000001B3n;
+    const mask = 0xFFFFFFFFFFFFFFFFn;
+    for (const b of bytes) {
+        h ^= BigInt(b);
+        h = (h * prime) & mask;
+    }
+    return h.toString(16).padStart(16, '0');
+}
+
+function addDetect() {
+    const id = detectId++;
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.id = 'det_' + id;
+    div.innerHTML = `
+        <button class="rm" onclick="this.parentElement.remove();updatePreview()">&times;</button>
+        <h3>Детект #${id + 1}</h3>
+        <div class="row">
+            <label>Название:</label>
+            <input type="text" class="det-name" placeholder="DoomsdayClient" oninput="updatePreview()">
+        </div>
+        <div class="row">
+            <label>Процесс:</label>
+            <input type="text" class="det-proc" placeholder="javaw.exe" oninput="updatePreview()">
+        </div>
+        <div class="row">
+            <label>Показывать:</label>
+            <label class="toggle">
+                <input type="checkbox" class="det-show" checked onchange="updatePreview()">
+                <span class="sw"></span>
+                <span style="color:#8b949e;font-size:13px">Показывать найденные строки (без хеша)</span>
+            </label>
+        </div>
+        <label style="display:block;margin-bottom:6px">Строки (каждая с новой строки):</label>
+        <textarea class="det-strings" placeholder="w]JVoZGnDH&#10;pv>s(u86K:xs&#10;WYtgCSGPcf[" oninput="updatePreview()"></textarea>
+    `;
+    document.getElementById('detects').appendChild(div);
+    updatePreview();
+}
+
+function buildJSON() {
+    const cards = document.querySelectorAll('.card');
+    const detects = [];
+    cards.forEach(card => {
+        const name = card.querySelector('.det-name').value.trim();
+        const proc = card.querySelector('.det-proc').value.trim();
+        const show = card.querySelector('.det-show').checked;
+        const lines = card.querySelector('.det-strings').value.split('\n')
+            .map(s => s.trim()).filter(s => s.length > 0);
+        const hashes = lines.map(s => fnv1a64(s));
+        if (name && proc && hashes.length)
+            detects.push({ name, process: proc, show_strings: show, hashes });
+    });
+    return { version: 1, detects };
+}
+
+function updatePreview() {
+    const data = buildJSON();
+    document.getElementById('preview').textContent = JSON.stringify(data, null, 2);
+}
+
+function download() {
+    const data = buildJSON();
+    if (!data.detects.length) { alert('Добавьте хотя бы один детект со строками'); return; }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'detects.json';
+    a.click();
+}
+
+addDetect();
+</script>
+</body>
+</html>
